@@ -1,35 +1,81 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, Component } from "react";
 import Dashboard from "./components/Dashboard";
 import { formatData } from "./utils";
 import "./styles.css";
 
-export default function App() {
-  const [currencies, setcurrencies] = useState([]);
-  const [pair, setpair] = useState("");
-  const [price, setprice] = useState("0.00");
-  const [pastData, setpastData] = useState({});
-  const ws = useRef(null);
+export default class App extends Component {
+  constructor(props) {
+    super(props);
 
-  let first = useRef(false);
-  const url = "https://api.pro.coinbase.com";
+    this.state = {
+      currencies: [],
+      pair: "",
+      pairs: [],
+      price: "0.00",
+      pastData: {},
+      ws: {},
+      first: {},
+    }
 
-  useEffect(() => {
-    ws.current = new WebSocket("wss://ws-feed.pro.coinbase.com");
+    this.url = "https://api.pro.coinbase.com";
+  }
 
-    let pairs = [];
+  componentDidMount() {
+    this.setState({ws: {current: new WebSocket("wss://ws-feed.pro.coinbase.com")}});
 
-    const apiCall = async () => {
-      await fetch(url + "/products")
-        .then((res) => res.json())
-        .then((data) => (pairs = data));
+    // await?
+    this.apiCall();
+  }
+
+  componentDidUpdate(_, prevState) {
+    if (prevState.pair !== this.state.pair) {
+      if (!this.first.current) {
+        return;
+      }
       
-      let filtered = pairs.filter((pair) => {
-        if (pair.quote_currency === "USD") {
-          return pair;
+      let msg = {
+        type: "subscribe",
+        product_ids: [this.pair],
+        channels: ["ticker"]
+      };
+      let jsonMsg = JSON.stringify(msg);
+      this.ws.current.send(jsonMsg);
+  
+      let historicalDataURL = `${this.url}/products/${this.pair}/candles?granularity=86400`;
+      const fetchHistoricalData = async () => {
+        let dataArr = [];
+        await fetch(historicalDataURL)
+          .then((res) => res.json())
+          .then((data) => (dataArr = data));
+        
+        let formattedData = formatData(dataArr);
+        this.setState({pastData: formattedData});
+      };
+  
+      fetchHistoricalData();
+  
+      this.ws.current.onmessage = (e) => {
+        let data = JSON.parse(e.data);
+        if (data.type !== "ticker") {
+          return;
         }
-      });
+  
+        if (data.product_id === this.pair) {
+          this.setState({price: data.price});
+        }
+      };  
+    }
 
-      filtered = filtered.sort((a, b) => {
+  }
+
+  async apiCall() {
+    await fetch(this.url + "/products")
+      .then(res => res.json())
+      .then(data => this.pairs = data);
+    
+    let filtered = this.pairs
+      .filter(pair => pair.quote_currency === "USD")
+      .sort((a, b) => {
         if (a.base_currency < b.base_currency) {
           return -1;
         }
@@ -39,81 +85,46 @@ export default function App() {
         return 0;
       });
 
-      
-      setcurrencies(filtered);
-
-      first.current = true;
-    };
-
-    apiCall();
-  }, []);
-
-  useEffect(() => {
-    if (!first.current) {
-      
-      return;
-    }
-
     
-    let msg = {
-      type: "subscribe",
-      product_ids: [pair],
-      channels: ["ticker"]
-    };
-    let jsonMsg = JSON.stringify(msg);
-    ws.current.send(jsonMsg);
+    this.setState({
+      currencies: filtered,
+      first: {current: true}
+    });
+  };
 
-    let historicalDataURL = `${url}/products/${pair}/candles?granularity=86400`;
-    const fetchHistoricalData = async () => {
-      let dataArr = [];
-      await fetch(historicalDataURL)
-        .then((res) => res.json())
-        .then((data) => (dataArr = data));
-      
-      let formattedData = formatData(dataArr);
-      setpastData(formattedData);
-    };
-
-    fetchHistoricalData();
-
-    ws.current.onmessage = (e) => {
-      let data = JSON.parse(e.data);
-      if (data.type !== "ticker") {
-        return;
-      }
-
-      if (data.product_id === pair) {
-        setprice(data.price);
-      }
-    };
-  }, [pair]);
-
-  const handleSelect = (e) => {
+  handleSelect(e) {
     let unsubMsg = {
       type: "unsubscribe",
-      product_ids: [pair],
+      product_ids: [this.pair],
       channels: ["ticker"]
     };
     let unsub = JSON.stringify(unsubMsg);
 
-    ws.current.send(unsub);
+    this.ws.current.send(unsub);
 
-    setpair(e.target.value);
-  };
-  return (
-    <div className="container">
-      {
-        <select name="currency" value={pair} onChange={handleSelect}>
-          {currencies.map((cur, idx) => {
-            return (
-              <option key={idx} value={cur.id}>
-                {cur.display_name}
-              </option>
-            );
-          })}
-        </select>
-      }
-      <Dashboard price={price} data={pastData} />
-    </div>
-  );
+    this.setState({pair: e.target.value});
+  }
+
+  render() {
+    return (
+      <div className="container">
+        {
+          <select name="currency" value={this.pair} onChange={this.handleSelect}>
+            {// this.currencies
+
+
+
+            [{display_name: '1INCH/USD', id: '1INCH-USD'}].map((cur, idx) => {
+              return (
+                <option key={idx} value={cur.id}>
+                  {cur.display_name}
+                </option>
+              );
+            })}
+          </select>
+        }
+        <Dashboard price={this.price} data={this.pastData} />
+      </div>
+    );    
+  }
 }

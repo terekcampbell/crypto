@@ -76,16 +76,12 @@ export default class App extends Component {
 
     this.setState({pair: e.target.value});
   }
-      
+
   fetchHistoricalData = async () => {
-    let dataArr = [];
     let historicalDataURL = `${this.url}/products/${this.state.pair}/candles?granularity=86400`;
     await fetch(historicalDataURL)
       .then(res => res.json())
-      .then(data => (dataArr = data));
-    
-    let formattedData = formatData(dataArr);
-    this.setState({pastData: formattedData});
+      .then(data => this.setState({pastData: formatData(data)}));
   }
 
 render() {

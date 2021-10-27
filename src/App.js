@@ -13,63 +13,13 @@ export default class App extends Component {
       pairs: [],
       price: "0.00",
       pastData: {},
-      ws: {},
-      first: {},
     }
 
     this.url = "https://api.pro.coinbase.com";
+    this.ws = new WebSocket("wss://ws-feed.pro.coinbase.com");
   }
 
-  componentDidMount() {
-    this.setState({ws: {current: new WebSocket("wss://ws-feed.pro.coinbase.com")}});
-
-    // await?
-    this.apiCall();
-  }
-
-  componentDidUpdate(_, prevState) {
-    if (prevState.pair !== this.state.pair) {
-      if (!this.state.first.current) {
-        return;
-      }
-      
-      let msg = {
-        type: "subscribe",
-        product_ids: [this.state.pair],
-        channels: ["ticker"]
-      };
-      let jsonMsg = JSON.stringify(msg);
-      this.state.ws.current.send(jsonMsg);
-  
-      let historicalDataURL = `${this.url}/products/${this.state.pair}/candles?granularity=86400`;
-      
-      const fetchHistoricalData = async () => {
-        let dataArr = [];
-        await fetch(historicalDataURL)
-          .then((res) => res.json())
-          .then((data) => (dataArr = data));
-        
-        let formattedData = formatData(dataArr);
-        this.setState({pastData: formattedData});
-      };
-  
-      fetchHistoricalData();
-  
-      this.state.ws.current.onmessage = (e) => {
-        let data = JSON.parse(e.data);
-        if (data.type !== "ticker") {
-          return;
-        }
-  
-        if (data.product_id === this.state.pair) {
-          this.setState({price: data.price});
-        }
-      };  
-    }
-
-  }
-
-  async apiCall() {
+  async componentDidMount() {
     await fetch(this.url + "/products")
       .then(res => res.json())
       .then(data => this.state.pairs = data);
@@ -86,14 +36,35 @@ export default class App extends Component {
         return 0;
       });
 
-    
-    this.setState({
-      currencies: filtered,
-      first: {current: true}
-    });
-  };
+    this.setState({currencies: filtered});
+  }
 
-  handleSelect = (e) => {
+  componentDidUpdate(_, prevState) {
+    if (prevState.pair !== this.state.pair) {
+      let msg = {
+        type: "subscribe",
+        product_ids: [this.state.pair],
+        channels: ["ticker"]
+      };
+      let jsonMsg = JSON.stringify(msg);
+      this.ws.send(jsonMsg);
+  
+      this.fetchHistoricalData();
+  
+      this.ws.onmessage = e => {
+        let data = JSON.parse(e.data);
+        if (data.type !== "ticker") {
+          return;
+        }
+  
+        if (data.product_id === this.state.pair) {
+          this.setState({price: data.price});
+        }
+      };  
+    }
+  }
+
+  handleSelect = e => {
     let unsubMsg = {
       type: "unsubscribe",
       product_ids: [this.state.pair],
@@ -101,12 +72,23 @@ export default class App extends Component {
     };
     let unsub = JSON.stringify(unsubMsg);
 
-    this.state.ws.current.send(unsub);
+    this.ws.send(unsub);
 
     this.setState({pair: e.target.value});
   }
+      
+  fetchHistoricalData = async () => {
+    let dataArr = [];
+    let historicalDataURL = `${this.url}/products/${this.state.pair}/candles?granularity=86400`;
+    await fetch(historicalDataURL)
+      .then(res => res.json())
+      .then(data => (dataArr = data));
+    
+    let formattedData = formatData(dataArr);
+    this.setState({pastData: formattedData});
+  }
 
-  render() {
+render() {
     return (
       <div className="container">
         {

@@ -29,19 +29,20 @@ export default class App extends Component {
 
   componentDidUpdate(_, prevState) {
     if (prevState.pair !== this.state.pair) {
-      if (!this.first.current) {
+      if (!this.state.first.current) {
         return;
       }
       
       let msg = {
         type: "subscribe",
-        product_ids: [this.pair],
+        product_ids: [this.state.pair],
         channels: ["ticker"]
       };
       let jsonMsg = JSON.stringify(msg);
-      this.ws.current.send(jsonMsg);
+      this.state.ws.current.send(jsonMsg);
   
-      let historicalDataURL = `${this.url}/products/${this.pair}/candles?granularity=86400`;
+      let historicalDataURL = `${this.url}/products/${this.state.pair}/candles?granularity=86400`;
+      
       const fetchHistoricalData = async () => {
         let dataArr = [];
         await fetch(historicalDataURL)
@@ -54,13 +55,13 @@ export default class App extends Component {
   
       fetchHistoricalData();
   
-      this.ws.current.onmessage = (e) => {
+      this.state.ws.current.onmessage = (e) => {
         let data = JSON.parse(e.data);
         if (data.type !== "ticker") {
           return;
         }
   
-        if (data.product_id === this.pair) {
+        if (data.product_id === this.state.pair) {
           this.setState({price: data.price});
         }
       };  
@@ -71,9 +72,9 @@ export default class App extends Component {
   async apiCall() {
     await fetch(this.url + "/products")
       .then(res => res.json())
-      .then(data => this.pairs = data);
+      .then(data => this.state.pairs = data);
     
-    let filtered = this.pairs
+    let filtered = this.state.pairs
       .filter(pair => pair.quote_currency === "USD")
       .sort((a, b) => {
         if (a.base_currency < b.base_currency) {
@@ -92,15 +93,15 @@ export default class App extends Component {
     });
   };
 
-  handleSelect(e) {
+  handleSelect = (e) => {
     let unsubMsg = {
       type: "unsubscribe",
-      product_ids: [this.pair],
+      product_ids: [this.state.pair],
       channels: ["ticker"]
     };
     let unsub = JSON.stringify(unsubMsg);
 
-    this.ws.current.send(unsub);
+    this.state.ws.current.send(unsub);
 
     this.setState({pair: e.target.value});
   }
@@ -109,12 +110,8 @@ export default class App extends Component {
     return (
       <div className="container">
         {
-          <select name="currency" value={this.pair} onChange={this.handleSelect}>
-            {// this.currencies
-
-
-
-            [{display_name: '1INCH/USD', id: '1INCH-USD'}].map((cur, idx) => {
+          <select name="currency" value={this.state.pair} onChange={this.handleSelect}>
+            {this.state.currencies.map((cur, idx) => {
               return (
                 <option key={idx} value={cur.id}>
                   {cur.display_name}
@@ -123,7 +120,7 @@ export default class App extends Component {
             })}
           </select>
         }
-        <Dashboard price={this.price} data={this.pastData} />
+        <Dashboard price={this.state.price} data={this.state.pastData} />
       </div>
     );    
   }
